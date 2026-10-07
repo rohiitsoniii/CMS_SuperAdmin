@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+dist-ssr/
+
+# Env (never commit real secrets)
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+logs/
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# Test output
+coverage/
+playwright-report/
+test-results/
+*.spec.ts-snapshots/
+
+# Misc
+*.local
