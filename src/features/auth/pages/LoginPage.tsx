@@ -7,6 +7,7 @@ import { Box, Card, CardContent, CardHeader, TextField, Button, InputAdornment, 
 import { Visibility, VisibilityOff, LockOutlined, EmailOutlined } from '@mui/icons-material';
 import { useAuthStore } from '../../../shared/hooks/useAuthStore';
 import { authAPI } from '../../../shared/api/client';
+import { MFAChallengeModal } from '../components/MFAChallengeModal';
 
 const loginSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
@@ -19,6 +20,7 @@ type LoginForm = z.infer<typeof loginSchema>;
 export const LoginPage: React.FC = () => {
   const [showPassword, setShowPassword] = React.useState(false);
   const [error, setError] = React.useState('');
+  const [mfaTempToken, setMfaTempToken] = React.useState<string | null>(null);
   const navigate = useNavigate();
   const { setAuth } = useAuthStore();
 
@@ -41,8 +43,8 @@ export const LoginPage: React.FC = () => {
           setError('MFA required but no challenge token was issued.');
           return;
         }
-        // In a real app, open MFA modal here
-        setError('MFA required - implement MFA modal');
+        // Hold the pre-MFA temp token ONLY for the verify call — never as a session
+        setMfaTempToken(tempToken);
         return;
       }
       const { user, tenant, tokens } = payload;
@@ -166,6 +168,9 @@ export const LoginPage: React.FC = () => {
           </Typography>
         </Box>
       </Box>
+      {mfaTempToken && (
+        <MFAChallengeModal tempToken={mfaTempToken} onCancel={() => setMfaTempToken(null)} />
+      )}
     </Box>
   );
 };

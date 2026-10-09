@@ -8,6 +8,8 @@ export interface User {
   firstName: string;
   lastName: string;
   role: 'superadmin' | 'support' | 'billing' | 'devops';
+  /** Mirrors backend User.isSuperAdmin — the gate checks this, not just role. */
+  isSuperAdmin?: boolean;
   avatar?: string;
   mfaEnabled: boolean;
 }
@@ -38,6 +40,9 @@ interface AuthState {
   isLoading: boolean;
   isImpersonating: boolean;
   originalTenant: Tenant | null;
+  /** 15-min support token from POST /tenants/:id/impersonate (session-only). */
+  impersonationToken: string | null;
+  originalAccessToken: string | null;
 
   // Actions
   setAuth: (user: User, tenant: Tenant, tokens: { accessToken: string; refreshToken: string }) => void;
@@ -48,6 +53,8 @@ interface AuthState {
   restoreSession: () => Promise<boolean>;
   startImpersonation: (tenant: Tenant) => void;
   exitImpersonation: () => void;
+  /** Real flow: mints a backend impersonation token and swaps the session onto it. */
+  beginImpersonation: (tenantId: string) => Promise<void>;
 }
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
@@ -63,6 +70,8 @@ export const useAuthStore = create<AuthState>()(
       isLoading: true,
       isImpersonating: false,
       originalTenant: null,
+      impersonationToken: null,
+      originalAccessToken: null,
 
       setAuth: (user, tenant, tokens) =>
         set({
@@ -80,11 +89,15 @@ export const useAuthStore = create<AuthState>()(
         })),
 
       setTenant: (tenant) =>
-        set({
+        set((state) => ({
           tenant,
+          // Leaving the context also drops any impersonation (and its token)
+          accessToken: state.originalAccessToken ?? state.accessToken,
           isImpersonating: false,
           originalTenant: null,
-        }),
+          originalAccessToken: null,
+          impersonationToken: null,
+        })),
 
       setLoading: (loading) => set({ isLoading: loading }),
 
@@ -97,6 +110,8 @@ export const useAuthStore = create<AuthState>()(
           isAuthenticated: false,
           isImpersonating: false,
           originalTenant: null,
+          impersonationToken: null,
+          originalAccessToken: null,
         }),
 
       restoreSession: async () => {
@@ -152,9 +167,56 @@ export const useAuthStore = create<AuthState>()(
       exitImpersonation: () =>
         set((state) => ({
           tenant: state.originalTenant,
+          // Restore the admin session token (untouched if impersonation never swapped it)
+          accessToken: state.originalAccessToken ?? state.accessToken,
           isImpersonating: false,
           originalTenant: null,
+          originalAccessToken: null,
+          impersonationToken: null,
         })),
+
+      beginImpersonation: async (tenantId: string) => {
+        const { tenantsAPI } = await import('../api/client');
+        const minted = await tenantsAPI.impersonate(tenantId);
+        const impToken: string | undefined = minted.data?.data?.token;
+        if (!impToken) throw new Error('Impersonation failed: no token was issued');
+
+        // Resolve the tenant label for the banner with the *admin* session
+        let tenant: Tenant = {
+          id: tenantId,
+          name: tenantId.slice(0, 8),
+          slug: '',
+          status: 'active',
+          subscription: { plan: '', status: '', currentPeriodEnd: '' },
+          usage: { storageUsed: 0, apiCalls: 0, contentItems: 0 },
+        };
+        try {
+          const detail = await tenantsAPI.get(tenantId);
+          const t = detail.data?.data?.tenant ?? detail.data?.tenant;
+          if (t) {
+            tenant = {
+              id: String(t._id || t.id),
+              name: t.name,
+              slug: t.slug || '',
+              status: t.isActive === false ? 'suspended' : 'active',
+              subscription: { plan: t.subscription?.plan || '', status: '', currentPeriodEnd: '' },
+              usage: { storageUsed: 0, apiCalls: 0, contentItems: 0 },
+            };
+          }
+        } catch {
+          // Banner falls back to the id stub — the token itself is authoritative
+        }
+
+        const { accessToken } = get();
+        set((state) => ({
+          originalTenant: state.tenant,
+          originalAccessToken: accessToken,
+          tenant,
+          accessToken: impToken,
+          impersonationToken: impToken,
+          isImpersonating: true,
+        }));
+      },
     }),
     {
       name: 'cms-super-admin-auth',

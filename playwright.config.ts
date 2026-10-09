@@ -8,7 +8,7 @@ export default defineConfig({
   workers: process.env.CI ? 1 : undefined,
   reporter: 'html',
   use: {
-    baseURL: 'http://localhost:5175',
+    baseURL: 'http://127.0.0.1:5175',
     trace: 'on-first-retry',
   },
   projects: [
@@ -18,8 +18,9 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'npm run preview',
-    url: 'http://localhost:5175',
+    // npx directly: `npm run` does not resolve reliably under webServer spawn on Windows
+    command: 'npx vite preview --port 5175 --host 127.0.0.1 --strictPort',
+    url: 'http://127.0.0.1:5175',
     reuseExistingServer: !process.env.CI,
     timeout: 120000,
   },

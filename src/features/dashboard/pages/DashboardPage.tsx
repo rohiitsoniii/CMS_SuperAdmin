@@ -1,53 +1,61 @@
 import React from 'react';
-import { Box, Grid, Card, CardContent, Typography, Chip, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Button, LinearProgress } from '@mui/material';
+import { useNavigate } from 'react-router-dom';
+import { Box, Grid, Card, CardContent, Typography, Chip, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Button, Skeleton, Alert } from '@mui/material';
 import {
   Business as BusinessIcon,
   CreditCard as CreditCardIcon,
-  Campaign as CampaignIcon,
+  Warning as WarningIcon,
   Memory as MemoryIcon,
-  TrendingUp as TrendingUpIcon,
   People as PeopleIcon,
-  MoreVert as MoreVertIcon,
+  Campaign as CampaignIcon,
   Key as KeyIcon,
 } from '@mui/icons-material';
-import { tenantsAPI } from '../../../shared/api/client';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
+import { tenantsAPI, subscriptionsAPI, tokenUsageAPI, systemHealthAPI } from '../../../shared/api/client';
 import { useQuery } from '@tanstack/react-query';
 
-const statCards = [
-  { title: 'Total Tenants', value: '247', change: '+12%', trend: 'up', icon: <BusinessIcon />, color: 'primary' },
-  { title: 'Monthly Revenue', value: '$48,320', change: '+8.2%', trend: 'up', icon: <CreditCardIcon />, color: 'success' },
-  { title: 'Active Campaigns', value: '23', change: '-3%', trend: 'down', icon: <CampaignIcon />, color: 'warning' },
-  { title: 'Token Usage (Daily)', value: '2.4M', change: '+15%', trend: 'up', icon: <MemoryIcon />, color: 'info' },
-];
-
-const recentTenantsColumns = [
-  { field: 'name', headerName: 'Tenant', width: 200 },
-  { field: 'plan', headerName: 'Plan', width: 150 },
-  { field: 'status', headerName: 'Status', width: 120 },
-  { field: 'revenue', headerName: 'MRR', width: 120, type: 'number' },
-  { field: 'users', headerName: 'Users', width: 100, type: 'number' },
-  { field: 'lastActive', headerName: 'Last Active', width: 150, type: 'date' },
-];
+const unwrapList = (res: any): any[] => res.data?.data?.tenants ?? res.data?.tenants ?? [];
 
 export const DashboardPage: React.FC = () => {
-  const { data: tenants = [] } = useQuery({
-    queryKey: ['tenants', 'recent'],
-    queryFn: async (): Promise<any[]> => (await tenantsAPI.list({ limit: 10 })).data,
-  });
+  const navigate = useNavigate();
+  const statsQ = useQuery({ queryKey: ['sys-stats'], queryFn: () => tenantsAPI.summary().then((r) => r.data?.data) });
+  const revenueQ = useQuery({ queryKey: ['sys-revenue'], queryFn: () => subscriptionsAPI.revenue.get().then((r) => r.data?.data) });
+  const aiQ = useQuery({ queryKey: ['sys-ai'], queryFn: () => tokenUsageAPI.getUsage().then((r) => r.data?.data) });
+  const healthQ = useQuery({ queryKey: ['sys-health'], queryFn: () => systemHealthAPI.getHealthDetail().then((r) => r.data?.data) });
+  const tenantsQ = useQuery({ queryKey: ['tenants', 'recent'], queryFn: async (): Promise<any[]> => unwrapList(await tenantsAPI.list({ limit: 8 })) });
+
+  const loading = statsQ.isLoading || revenueQ.isLoading || aiQ.isLoading || healthQ.isLoading;
+  const loadError = statsQ.error || revenueQ.error || aiQ.error || healthQ.error;
+
+  const statCards = [
+    { title: 'Total Tenants', value: statsQ.data ? String(statsQ.data.total ?? 0) : '—', icon: <BusinessIcon />, color: 'primary' as const },
+    { title: 'MRR', value: revenueQ.data ? `$${Number(revenueQ.data.mrr ?? 0).toLocaleString()}` : '—', icon: <CreditCardIcon />, color: 'success' as const },
+    { title: 'Open Errors (24h)', value: healthQ.data ? String(healthQ.data.errorsLast24h ?? 0) : '—', icon: <WarningIcon />, color: 'warning' as const },
+    { title: 'AI Cost (30d)', value: aiQ.data ? `$${Number(aiQ.data.totals?.costUSD ?? 0).toFixed(2)}` : '—', icon: <MemoryIcon />, color: 'info' as const },
+  ];
+
+  const planBars = revenueQ.data
+    ? Object.entries((revenueQ.data.byPlan ?? {}) as Record<string, { count: number; mrr: number }>).map(([plan, v]) => ({ plan, mrr: Math.round(v.mrr * 100) / 100 }))
+    : [];
+  const modelBars = (aiQ.data?.byModel ?? []).slice(0, 8).map((m: any) => ({ model: String(m.model).slice(0, 18), cost: m.costUSD }));
 
   return (
     <Box sx={{ py: 2 }}>
-      {/* Page Header */}
       <Box sx={{ mb: 4 }}>
         <Typography variant="h4" fontWeight={700} sx={{ mb: 0.5 }}>
           Dashboard
         </Typography>
         <Typography variant="body1" color="text.secondary">
-          Welcome back! Here's an overview of your platform.
+          Live platform overview — tenants, revenue, errors and AI spend.
         </Typography>
       </Box>
 
-      {/* Stat Cards */}
+      {loadError && (
+        <Alert severity="error" sx={{ mb: 3 }}>
+          Failed to load platform stats. Check that the backend is running and your session is valid.
+        </Alert>
+      )}
+
       <Grid container spacing={3} sx={{ mb: 4 }}>
         {statCards.map((stat) => (
           <Grid item xs={12} sm={6} lg={3} key={stat.title}>
@@ -57,16 +65,12 @@ export const DashboardPage: React.FC = () => {
                   <Box sx={{ p: 1, borderRadius: 2, bgcolor: `${stat.color}.light`, color: `${stat.color}.main` }}>
                     {stat.icon}
                   </Box>
-                  <Chip
-                    label={stat.trend === 'up' ? `+${stat.change}` : stat.change}
-                    size="small"
-                    color={stat.trend === 'up' ? 'success' : 'error'}
-                    icon={stat.trend === 'up' ? <TrendingUpIcon fontSize="small" /> : <TrendingUpIcon fontSize="small" />}
-                    variant="outlined"
-                  />
+                  {healthQ.data && stat.title === 'Open Errors (24h)' && (
+                    <Chip label={healthQ.data.status} size="small" color={healthQ.data.status === 'operational' ? 'success' : 'warning'} variant="outlined" />
+                  )}
                 </Box>
                 <Typography variant="h4" fontWeight={700} sx={{ mb: 0.5 }}>
-                  {stat.value}
+                  {loading ? <Skeleton width={80} /> : stat.value}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
                   {stat.title}
@@ -77,16 +81,14 @@ export const DashboardPage: React.FC = () => {
         ))}
       </Grid>
 
-      {/* Main Content */}
       <Grid container spacing={3}>
-        {/* Recent Tenants */}
         <Grid item xs={12} lg={8} sx={{ mb: 3 }}>
           <Paper elevation={1} sx={{ height: '100%' }}>
             <Box sx={{ p: 3, borderBottom: 1, borderColor: 'divider', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <Typography variant="h6" fontWeight={600}>
                 Recent Tenants
               </Typography>
-              <Button variant="text" endIcon={<MoreVertIcon />}>
+              <Button variant="text" onClick={() => navigate('/tenants')}>
                 View All
               </Button>
             </Box>
@@ -94,17 +96,21 @@ export const DashboardPage: React.FC = () => {
               <Table size="small">
                 <TableHead>
                   <TableRow>
-                    {recentTenantsColumns.map((col) => (
-                      <TableCell key={col.field} align={col.type === 'number' ? 'right' : 'left'} sx={{ fontWeight: 600 }}>
-                        {col.headerName}
-                      </TableCell>
-                    ))}
+                    <TableCell sx={{ fontWeight: 600 }}>Tenant</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Plan</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }} align="right">Users</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Last Active</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {tenants.length > 0 ? (
-                    tenants.map((tenant: any) => (
-                      <TableRow key={tenant.id} hover>
+                  {tenantsQ.isLoading ? (
+                    <TableRow>
+                      <TableCell colSpan={5}><Skeleton /></TableCell>
+                    </TableRow>
+                  ) : (tenantsQ.data ?? []).length > 0 ? (
+                    (tenantsQ.data ?? []).map((tenant: any) => (
+                      <TableRow key={tenant._id || tenant.id} hover sx={{ cursor: 'pointer' }} onClick={() => navigate(`/tenants/${tenant._id || tenant.id}`)}>
                         <TableCell>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                             <Box sx={{ width: 36, height: 36, borderRadius: '50%', bgcolor: 'primary.light', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'primary.main' }}>
@@ -120,23 +126,22 @@ export const DashboardPage: React.FC = () => {
                             </Box>
                           </Box>
                         </TableCell>
-                        <TableCell>{tenant.plan || 'Free'}</TableCell>
+                        <TableCell>{tenant.subscription?.plan || 'Free'}</TableCell>
                         <TableCell>
                           <Chip
-                            label={tenant.status || 'active'}
+                            label={tenant.isActive === false ? 'suspended' : 'active'}
                             size="small"
-                            color={tenant.status === 'active' ? 'success' : tenant.status === 'suspended' ? 'error' : 'default'}
+                            color={tenant.isActive === false ? 'error' : 'success'}
                             variant="outlined"
                           />
                         </TableCell>
-                        <TableCell align="right">${(tenant.revenue || 0).toLocaleString()}</TableCell>
-                        <TableCell align="right">{tenant.users || 0}</TableCell>
-                        <TableCell>{new Date(tenant.lastActive || Date.now()).toLocaleDateString()}</TableCell>
+                        <TableCell align="right">{tenant.userCount ?? 0}</TableCell>
+                        <TableCell>{tenant.lastLoginAt ? new Date(tenant.lastLoginAt).toLocaleDateString() : '—'}</TableCell>
                       </TableRow>
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
+                      <TableCell colSpan={5} align="center" sx={{ py: 4 }}>
                         <Typography color="text.secondary">No tenants found</Typography>
                       </TableCell>
                     </TableRow>
@@ -147,78 +152,92 @@ export const DashboardPage: React.FC = () => {
           </Paper>
         </Grid>
 
-        {/* Quick Stats / Platform Health */}
         <Grid item xs={12} lg={4} sx={{ mb: 3 }}>
           <Paper elevation={1} sx={{ height: '100%', p: 3, display: 'flex', flexDirection: 'column', gap: 3 }}>
             <Typography variant="h6" fontWeight={600}>
               Platform Health
             </Typography>
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              <Box>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                  <Typography variant="body2">API Uptime</Typography>
-                  <Typography variant="body2" fontWeight={600} color="success.main">99.99%</Typography>
+            {healthQ.data ? (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <Typography variant="body2">Status</Typography>
+                  <Chip label={healthQ.data.status} size="small" color={healthQ.data.status === 'operational' ? 'success' : 'warning'} />
                 </Box>
-                <LinearProgress variant="determinate" value={99.99} sx={{ height: 6, borderRadius: 3 }} color="success" />
-              </Box>
-              <Box>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                  <Typography variant="body2">Error Rate</Typography>
-                  <Typography variant="body2" fontWeight={600} color="success.main">0.02%</Typography>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <Typography variant="body2">Open incidents</Typography>
+                  <Typography variant="body2" fontWeight={600}>{healthQ.data.openIncidents?.length ?? 0}</Typography>
                 </Box>
-                <LinearProgress variant="determinate" value={2} sx={{ height: 6, borderRadius: 3 }} color="success" />
-              </Box>
-              <Box>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                  <Typography variant="body2">Avg Response Time</Typography>
-                  <Typography variant="body2" fontWeight={600} color="primary.main">87ms</Typography>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <Typography variant="body2">Errors (24h)</Typography>
+                  <Typography variant="body2" fontWeight={600}>{healthQ.data.errorsLast24h ?? 0}</Typography>
                 </Box>
-                <LinearProgress variant="determinate" value={40} sx={{ height: 6, borderRadius: 3 }} color="primary" />
+                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <Typography variant="body2">Uptime</Typography>
+                  <Typography variant="body2" fontWeight={600}>
+                    {healthQ.data.uptime != null ? `${(healthQ.data.uptime / 3600).toFixed(1)}h` : '—'}
+                  </Typography>
+                </Box>
               </Box>
-            </Box>
+            ) : (
+              <Skeleton variant="rectangular" height={120} />
+            )}
 
             <Typography variant="h6" fontWeight={600} sx={{ mt: 1 }}>
               Quick Actions
             </Typography>
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-              <Button variant="outlined" startIcon={<PeopleIcon />} fullWidth>
-                Invite New Tenant
+              <Button variant="outlined" startIcon={<PeopleIcon />} fullWidth onClick={() => navigate('/tenants')}>
+                View Tenants
               </Button>
-              <Button variant="outlined" startIcon={<CampaignIcon />} fullWidth>
-                Create Campaign
+              <Button variant="outlined" startIcon={<CampaignIcon />} fullWidth onClick={() => navigate('/campaigns')}>
+                View Campaigns
               </Button>
-              <Button variant="outlined" startIcon={<KeyIcon />} fullWidth>
+              <Button variant="outlined" startIcon={<KeyIcon />} fullWidth onClick={() => navigate('/api-keys')}>
                 Manage API Keys
               </Button>
             </Box>
           </Paper>
         </Grid>
 
-        {/* Revenue Chart Placeholder */}
-        <Grid item xs={12} sx={{ mb: 3 }}>
-          <Paper elevation={1} sx={{ p: 3 }}>
-            <Typography variant="h6" fontWeight={600} sx={{ mb: 3 }}>
-              Revenue Overview (Last 30 Days)
+        <Grid item xs={12} lg={6} sx={{ mb: 3 }}>
+          <Paper elevation={1} sx={{ p: 3, height: 340 }}>
+            <Typography variant="h6" fontWeight={600} sx={{ mb: 2 }}>
+              MRR by Plan
             </Typography>
-            <Box sx={{ height: 300, display: 'flex', alignItems: 'flex-end', justifyContent: 'space-around', px: 2 }}>
-              {Array.from({ length: 12 }, (_, i) => (
-                <Box key={i} sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1 }}>
-                  <Box
-                    sx={{
-                      width: '100%',
-                      maxWidth: 40,
-                      height: Math.random() * 250 + 50,
-                      bgcolor: 'primary.main',
-                      borderRadius: '4px 4px 0 0',
-                      transition: 'height 0.3s ease',
-                    }}
-                  />
-                  <Typography variant="caption" sx={{ mt: 1, color: 'text.secondary' }}>
-                    Week {i + 1}
-                  </Typography>
-                </Box>
-              ))}
-            </Box>
+            {planBars.length > 0 ? (
+              <ResponsiveContainer width="100%" height={260}>
+                <BarChart data={planBars}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="plan" />
+                  <YAxis />
+                  <Tooltip />
+                  <Bar dataKey="mrr" name="MRR ($)" fill="#1976d2" />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <Typography color="text.secondary">No revenue data yet</Typography>
+            )}
+          </Paper>
+        </Grid>
+
+        <Grid item xs={12} lg={6} sx={{ mb: 3 }}>
+          <Paper elevation={1} sx={{ p: 3, height: 340 }}>
+            <Typography variant="h6" fontWeight={600} sx={{ mb: 2 }}>
+              AI Cost by Model (30d)
+            </Typography>
+            {modelBars.length > 0 ? (
+              <ResponsiveContainer width="100%" height={260}>
+                <BarChart data={modelBars}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="model" tick={{ fontSize: 11 }} interval={0} angle={-20} height={60} />
+                  <YAxis />
+                  <Tooltip />
+                  <Bar dataKey="cost" name="Cost ($)" fill="#7c4dff" />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <Typography color="text.secondary">No AI usage yet</Typography>
+            )}
           </Paper>
         </Grid>
       </Grid>

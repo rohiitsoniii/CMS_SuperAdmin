@@ -144,183 +144,261 @@ export const authAPI = {
   me: () => api.get('/auth/me'),
 };
 
+// ---------------------------------------------------------------------------
+// Endpoint modules — paths mirror backend/src/routes/systemRoutes.ts exactly.
+// Do not add a method here without a matching backend route (see client.test.ts).
+// ---------------------------------------------------------------------------
+
 export const tenantsAPI = {
-  list: (params?: { page?: number; limit?: number; search?: string; status?: string }) =>
+  list: (params?: { page?: number; limit?: number; search?: string; plan?: string; status?: string }) =>
     api.get('/system/tenants', { params }),
+
+  summary: () => api.get('/system/tenants/summary'),
 
   get: (id: string) => api.get(`/system/tenants/${id}`),
 
-  create: (data: { name: string; slug: string; planId: string }) =>
-    api.post('/system/tenants', data),
+  suspend: (id: string, reason?: string) => api.patch(`/system/tenants/${id}/suspend`, { reason }),
 
-  update: (id: string, data: Partial<{ name: string; status: string; planId: string }>) =>
-    api.put(`/system/tenants/${id}`, data),
+  activate: (id: string) => api.patch(`/system/tenants/${id}/activate`),
 
-  delete: (id: string) => api.delete(`/system/tenants/${id}`),
+  updatePlan: (id: string, data: { plan?: string; billingCycle?: 'monthly' | 'yearly'; customLimits?: Record<string, number> }) =>
+    api.patch(`/system/tenants/${id}/plan`, data),
 
-  suspend: (id: string) => api.post(`/system/tenants/${id}/suspend`),
-
-  activate: (id: string) => api.post(`/system/tenants/${id}/activate`),
+  resetQuota: (id: string) => api.post(`/system/tenants/${id}/reset-quota`),
 
   impersonate: (id: string) => api.post(`/system/tenants/${id}/impersonate`),
 
-  getUsage: (id: string) => api.get(`/system/tenants/${id}/usage`),
-
-  getAuditLogs: (id: string, params?: { page?: number; limit?: number }) =>
-    api.get(`/system/tenants/${id}/audit-logs`, { params }),
+  delete: (id: string) => api.delete(`/system/tenants/${id}`),
 };
 
 export const subscriptionsAPI = {
   plans: {
-    list: () => api.get('/billing/plans'),
-    get: (id: string) => api.get(`/billing/plans/${id}`),
-    create: (data: any) => api.post('/billing/plans', data),
-    update: (id: string, data: any) => api.put(`/billing/plans/${id}`, data),
-    delete: (id: string) => api.delete(`/billing/plans/${id}`),
+    list: (params?: { isActive?: boolean }) => api.get('/system/plans', { params }),
+    get: (id: string) => api.get(`/system/plans/${id}`),
+    create: (data: any) => api.post('/system/plans', data),
+    update: (id: string, data: any) => api.put(`/system/plans/${id}`, data),
+    delete: (id: string) => api.delete(`/system/plans/${id}`),
   },
   coupons: {
     list: () => api.get('/system/coupons'),
     create: (data: any) => api.post('/system/coupons', data),
-    update: (id: string, data: any) => api.put(`/system/coupons/${id}`, data),
-    delete: (id: string) => api.delete(`/system/coupons/${id}`),
   },
   subscriptions: {
-    list: (params?: { page?: number; limit?: number; status?: string }) =>
+    list: (params?: { page?: number; limit?: number; status?: string; plan?: string; tenantId?: string }) =>
       api.get('/system/subscriptions', { params }),
-    get: (id: string) => api.get(`/system/subscriptions/${id}`),
   },
   revenue: {
-    getStats: (params?: { period?: string }) => api.get('/system/analytics/revenue', { params }),
+    get: (params?: { from?: string; to?: string; currency?: string }) => api.get('/system/revenue', { params }),
+    getChurn: (params?: { from?: string; to?: string }) => api.get('/system/churn', { params }),
+    getTrialsFunnel: (params?: { from?: string; to?: string }) => api.get('/system/trials/funnel', { params }),
+  },
+  invoices: {
+    refund: (id: string, amount?: number) => api.post(`/system/invoices/${id}/refund`, { amount }),
+    void: (id: string) => api.post(`/system/invoices/${id}/void`),
   },
 };
 
 export const campaignsAPI = {
-  list: (params?: { page?: number; limit?: number; status?: string }) =>
-    api.get('/system/campaigns', { params }),
+  overview: (params?: { from?: string; to?: string }) => api.get('/system/email/overview', { params }),
 
-  get: (id: string) => api.get(`/system/campaigns/${id}`),
+  list: (params?: { page?: number; limit?: number; status?: string; tenantId?: string; search?: string }) =>
+    api.get('/system/email/campaigns', { params }),
 
-  create: (data: any) => api.post('/system/campaigns', data),
+  get: (id: string) => api.get(`/system/email/campaigns/${id}`),
 
-  update: (id: string, data: any) => api.put(`/system/campaigns/${id}`, data),
+  create: (data: { projectId: string; name: string; subject?: string; htmlContent?: string; fromName?: string; fromEmail?: string; recipientType?: string; segmentId?: string; customRecipients?: string[] }) =>
+    api.post('/system/email/campaigns', data),
 
-  delete: (id: string) => api.delete(`/system/campaigns/${id}`),
+  pause: (id: string) => api.post(`/system/email/campaigns/${id}/pause`),
 
-  send: (id: string) => api.post(`/system/campaigns/${id}/send`),
+  resume: (id: string) => api.post(`/system/email/campaigns/${id}/resume`),
 
-  schedule: (id: string, scheduledAt: string) => api.post(`/system/campaigns/${id}/schedule`, { scheduledAt }),
+  cancel: (id: string) => api.post(`/system/email/campaigns/${id}/cancel`),
 
-  getStats: (id: string) => api.get(`/system/campaigns/${id}/stats`),
+  send: (id: string) => api.post(`/system/email/campaigns/${id}/send`),
 
-  getRecipients: (id: string, params?: { page?: number; limit?: number }) =>
-    api.get(`/system/campaigns/${id}/recipients`, { params }),
+  schedule: (id: string, scheduledFor: string) => api.post(`/system/email/campaigns/${id}/schedule`, { scheduledFor }),
+
+  tickWorker: () => api.post('/system/email/worker/tick'),
+
+  suppressions: {
+    list: (params?: { page?: number; limit?: number; email?: string; status?: string }) =>
+      api.get('/system/email/suppressions', { params }),
+    suppress: (email: string, reason?: string) => api.post('/system/email/suppressions', { email, reason }),
+    unsuppress: (email: string) => api.delete(`/system/email/suppressions/${encodeURIComponent(email)}`),
+  },
+
+  updateSmtpLimits: (projectId: string, data: { dailyLimit?: number; monthlyLimit?: number }) =>
+    api.patch(`/system/email/throttle/${projectId}`, data),
 };
 
 export const emailTemplatesAPI = {
-  list: () => api.get('/system/email-templates'),
+  list: (params?: { page?: number; limit?: number; search?: string; projectId?: string; tenantId?: string }) =>
+    api.get('/system/email/templates', { params }),
 
-  get: (id: string) => api.get(`/system/email-templates/${id}`),
+  preview: (id: string, variables?: Record<string, string>) => api.post(`/system/email/templates/${id}/preview`, { variables }),
 
-  create: (data: any) => api.post('/system/email-templates', data),
-
-  update: (id: string, data: any) => api.put(`/system/email-templates/${id}`, data),
-
-  delete: (id: string) => api.delete(`/system/email-templates/${id}`),
-
-  preview: (id: string, data: any) => api.post(`/system/email-templates/${id}/preview`, data),
-
-  testSend: (id: string, email: string) => api.post(`/system/email-templates/${id}/test`, { email }),
+  testSend: (id: string, to: string) => api.post(`/system/email/templates/${id}/test`, { to }),
 };
 
 export const apiKeysAPI = {
-  list: () => api.get('/system/api-keys'),
+  list: (params?: { service?: string; isActive?: boolean; search?: string; page?: number; limit?: number }) =>
+    api.get('/system/api-keys', { params }),
 
-  get: (id: string) => api.get(`/system/api-keys/${id}`),
+  create: (data: { name: string; service: string; keyValue: string; scopes?: string[]; expiresAt?: string }) =>
+    api.post('/system/api-keys', data),
 
-  create: (data: { name: string; service: string; permissions: string[] }) => api.post('/system/api-keys', data),
+  reveal: (id: string) => api.post(`/system/api-keys/${id}/reveal`),
 
-  update: (id: string, data: any) => api.put(`/system/api-keys/${id}`, data),
+  rotate: (id: string, keyValue: string) => api.post(`/system/api-keys/${id}/rotate`, { keyValue }),
 
   delete: (id: string) => api.delete(`/system/api-keys/${id}`),
 
-  rotate: (id: string) => api.post(`/system/api-keys/${id}/rotate`),
+  getUsage: (id: string) => api.get(`/system/api-keys/${id}/usage`),
 
-  getUsage: (id: string, params?: { period?: string }) =>
-    api.get(`/system/api-keys/${id}/usage`, { params }),
+  expiring: (days?: number) => api.get('/system/api-keys/expiring', { params: { days } }),
 };
 
 export const tokenUsageAPI = {
-  getOverview: (params?: { period?: string; tenantId?: string }) =>
-    api.get('/system/analytics/token-usage', { params }),
+  getUsage: (params?: { from?: string; to?: string; tenantId?: string }) =>
+    api.get('/system/ai/usage', { params }),
 
-  getByModel: (params?: { period?: string; tenantId?: string }) =>
-    api.get('/system/analytics/token-usage/by-model', { params }),
+  getTopConsumers: (params?: { month?: string; limit?: number }) =>
+    api.get('/system/ai/top-consumers', { params }),
 
-  getByTenant: (params?: { period?: string }) =>
-    api.get('/system/analytics/token-usage/by-tenant', { params }),
+  getProjection: (months?: number) => api.get('/system/ai/usage/projection', { params: { months } }),
 
-  getCostProjection: (params?: { months?: number }) =>
-    api.get('/system/analytics/token-usage/projection', { params }),
+  listAlerts: () => api.get('/system/ai/alerts'),
 
-  setAlert: (data: { threshold: number; period: 'daily' | 'monthly'; webhookUrl?: string; email?: string }) =>
-    api.post('/system/analytics/token-usage/alerts', data),
+  createAlert: (data: { tenantId?: string; metric: 'aiCostUSD' | 'aiTokens'; threshold: number; period: 'daily' | 'monthly'; notifyEmail?: string; webhookUrl?: string }) =>
+    api.post('/system/ai/alerts', data),
 
-  getAlerts: () => api.get('/system/analytics/token-usage/alerts'),
+  deleteAlert: (id: string) => api.delete(`/system/ai/alerts/${id}`),
+
+  evaluateAlerts: () => api.post('/system/ai/alerts/evaluate'),
 };
 
 export const systemHealthAPI = {
-  getStatus: () => api.get('/system/health'),
+  getHealthDetail: () => api.get('/system/health/detail'),
 
-  getMetrics: (params?: { period?: string }) => api.get('/system/metrics', { params }),
+  getPerformance: (params?: { from?: string; to?: string; limit?: number }) =>
+    api.get('/system/performance', { params }),
 
-  getErrors: (params?: { page?: number; limit?: number; severity?: string; tenantId?: string }) =>
+  getErrors: (params?: { page?: number; limit?: number; severity?: string; isFixed?: boolean; statusCode?: number; path?: string; method?: string; tenantId?: string; startDate?: string; endDate?: string }) =>
     api.get('/system/errors', { params }),
 
-  getErrorDetail: (id: string) => api.get(`/system/errors/${id}`),
+  fixError: (id: string) => api.patch(`/system/errors/${id}/fix`),
 
-  getQueueStatus: () => api.get('/system/queues/status'),
+  listIncidents: (params?: { status?: string; page?: number; limit?: number }) =>
+    api.get('/system/incidents', { params }),
 
-  getSlowQueries: (params?: { limit?: number; tenantId?: string }) =>
-    api.get('/system/queries/slow', { params }),
+  createIncident: (data: { title: string; description?: string; severity?: string; components?: string[] }) =>
+    api.post('/system/incidents', data),
+
+  updateIncident: (id: string, data: { status?: string; message?: string }) =>
+    api.patch(`/system/incidents/${id}`, data),
+};
+
+export const workersAPI = {
+  getQueues: () => api.get('/system/queues'),
+
+  tickWorker: (name: 'email-campaigns' | 'webhook-retry' | 'scheduled-publish' | 'billing-housekeeping') =>
+    api.post(`/system/workers/${name}/tick`),
+
+  replayDeadWebhooks: (data?: { webhookId?: string; limit?: number }) =>
+    api.post('/system/webhooks/replay-dead', data ?? {}),
+
+  getTranslationJob: (id: string) => api.get(`/system/translation/jobs/${id}`),
+
+  retryTranslationJob: (id: string) => api.post(`/system/translation/jobs/${id}/retry`),
+
+  cancelTranslationJob: (id: string) => api.delete(`/system/translation/jobs/${id}`),
+};
+
+export const opsAPI = {
+  purgeCache: (params?: { tenantId?: string; projectSlug?: string }) =>
+    api.delete('/system/cache', { params }),
+
+  cacheStats: () => api.get('/system/cache/stats'),
+
+  listBackups: (params?: { tenantId?: string; type?: 'full' | 'project' }) =>
+    api.get('/system/backups', { params }),
+
+  verifyBackup: (filename: string) => api.post('/system/backups/verify', { filename }),
+
+  restoreBackupFor: (filename: string, tenantId: string) =>
+    api.post(`/system/backups/${encodeURIComponent(filename)}/restore-for/${tenantId}`),
+
+  cleanupBackups: (data?: { daysToKeep?: number; tenantId?: string }) =>
+    api.post('/system/backups/cleanup', data ?? {}),
+
+  getStorage: (limit?: number) => api.get('/system/storage', { params: { limit } }),
 };
 
 export const auditLogsAPI = {
-  list: (params?: { page?: number; limit?: number; tenantId?: string; action?: string; startDate?: string; endDate?: string }) =>
+  list: (params?: { page?: number; limit?: number; tenantId?: string; action?: string; userId?: string; resourceType?: string; resourceId?: string; status?: string; ip?: string; startDate?: string; endDate?: string }) =>
     api.get('/system/audit-logs', { params }),
 
-  export: (params?: { tenantId?: string; startDate?: string; endDate?: string }) =>
+  export: (params?: { tenantId?: string; action?: string; startDate?: string; endDate?: string }) =>
     api.get('/system/audit-logs/export', { params, responseType: 'blob' }),
 
-  getStats: (params?: { period?: string }) => api.get('/system/audit-logs/stats', { params }),
+  getStats: (params?: { from?: string; to?: string }) => api.get('/system/audit-logs/stats', { params }),
 };
 
 export const settingsAPI = {
-  get: () => api.get('/system/settings'),
+  list: () => api.get('/system/settings'),
 
-  update: (data: any) => api.put('/system/settings', data),
+  set: (key: string, value: unknown) => api.put(`/system/settings/${encodeURIComponent(key)}`, { value }),
 
-  getFeatureFlags: () => api.get('/system/settings/feature-flags'),
+  remove: (key: string) => api.delete(`/system/settings/${encodeURIComponent(key)}`),
 
-  updateFeatureFlag: (key: string, data: { enabled: boolean; rolloutPercentage?: number; tenantOverrides?: Record<string, boolean> }) =>
-    api.put(`/system/settings/feature-flags/${key}`, data),
+  listFlags: () => api.get('/system/feature-flags'),
+
+  createFlag: (data: { key: string; description?: string; enabled?: boolean; rolloutPercentage?: number; tenantOverrides?: Record<string, boolean> }) =>
+    api.post('/system/feature-flags', data),
+
+  updateFlag: (key: string, data: { enabled?: boolean; rolloutPercentage?: number; tenantOverrides?: Record<string, boolean>; description?: string }) =>
+    api.patch(`/system/feature-flags/${encodeURIComponent(key)}`, data),
+
+  deleteFlag: (key: string) => api.delete(`/system/feature-flags/${encodeURIComponent(key)}`),
 };
 
-export const usersAPI = {
-  list: (params?: { page?: number; limit?: number; role?: string }) =>
+export const supportAPI = {
+  listTickets: (params?: { page?: number; limit?: number; status?: string; priority?: string; category?: string; tenantId?: string; assignedTo?: string; unassigned?: string; search?: string }) =>
+    api.get('/system/support/tickets', { params }),
+
+  updateTicket: (id: string, data: { status?: string; priority?: string; assignedTo?: string | null }) =>
+    api.patch(`/system/support/tickets/${id}`, data),
+
+  replyTicket: (id: string, message: string) => api.post(`/system/support/tickets/${id}/reply`, { message }),
+
+  getSla: (params?: { from?: string; to?: string }) => api.get('/system/support/sla', { params }),
+};
+
+export const usersAPI = {  list: (params?: { page?: number; limit?: number; search?: string; role?: string; isSuperAdmin?: boolean; isActive?: boolean; tenantId?: string }) =>
     api.get('/system/users', { params }),
 
-  get: (id: string) => api.get(`/system/users/${id}`),
-
-  create: (data: { email: string; role: string; firstName: string; lastName: string }) =>
+  invite: (data: { email: string; tenantId: string; firstName: string; lastName?: string; role?: string; password: string; isSuperAdmin?: boolean }) =>
     api.post('/system/users', data),
 
-  update: (id: string, data: any) => api.put(`/system/users/${id}`, data),
+  update: (id: string, data: { firstName?: string; lastName?: string; role?: string; isActive?: boolean; isSuperAdmin?: boolean }) =>
+    api.put(`/system/users/${id}`, data),
 
   delete: (id: string) => api.delete(`/system/users/${id}`),
 
-  resetMfa: (id: string) => api.post(`/system/users/${id}/reset-mfa`),
+  resetPassword: (id: string) => api.post(`/system/users/${id}/reset-password`),
 
-  resendInvite: (id: string) => api.post(`/system/users/${id}/resend-invite`),
+  revokeSessions: (id: string) => api.post(`/system/users/${id}/revoke-sessions`),
+};
+
+export const twoFactorAPI = {
+  setup: () => api.post('/two-factor/setup'),
+  enable: (token: string) => api.post('/two-factor/enable', { token }),
+  verify: (token: string, tempToken?: string) =>
+    tempToken
+      ? api.post('/two-factor/verify', { token }, { headers: { Authorization: `Bearer ${tempToken}` } })
+      : api.post('/two-factor/verify', { token }),
+  status: () => api.get('/two-factor/status'),
 };
 
 export default api;

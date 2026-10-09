@@ -13,6 +13,9 @@ import { ApiKeysPage } from './features/api-keys/pages/ApiKeysPage';
 import { TokenUsagePage } from './features/token-usage/pages/TokenUsagePage';
 import { SystemHealthPage } from './features/system-health/pages/SystemHealthPage';
 import { AuditLogsPage } from './features/audit-logs/pages/AuditLogsPage';
+import { BackupsPage } from './features/backups/pages/BackupsPage';
+import { QueuesPage } from './features/queues/pages/QueuesPage';
+import { SupportPage } from './features/support/pages/SupportPage';
 import { SettingsPage } from './features/settings/pages/SettingsPage';
 import { UsersPage } from './features/users/pages/UsersPage';
 import { ProtectedRoute } from './shared/components/ProtectedRoute';
@@ -52,6 +55,15 @@ export default function App() {
 
         {/* System Health */}
         <Route path="/system-health" element={<SystemHealthPage />} />
+
+        {/* Queues & Workers */}
+        <Route path="/queues" element={<QueuesPage />} />
+
+        {/* Backups & Storage */}
+        <Route path="/backups" element={<BackupsPage />} />
+
+        {/* Support Inbox */}
+        <Route path="/support" element={<SupportPage />} />
 
         {/* Audit Logs */}
         <Route path="/audit-logs" element={<AuditLogsPage />} />
